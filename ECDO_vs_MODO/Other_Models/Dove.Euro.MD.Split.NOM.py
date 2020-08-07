@@ -1,0 +1,77 @@
+##################################################################################################
+# For use in python v. 3.7
+#
+# Originally created by Joshua I. Brown in August, 2020
+#
+# Description: Testing a Split with NO Migration model
+#
+#
+# NOTE: This script depends on frequency spectrum file created by fs_from_nex_GBS.py
+##################################################################################################
+
+
+
+import dadi
+import numpy
+import sys
+from numpy import array
+import pylab
+#import the demographics model
+from dadi import Demographics2D
+# Load the data
+data = dadi.Spectrum.from_file('Dove.Euro.MD.spectra.projected.20.15.fs')
+#Call number of samples (ns)
+ns = data.sample_sizes
+data.mask_corners()
+# print number of samples to verify correct load
+print (ns)
+# Grid point settings will be used for extrapolation.
+# Grid points need to be formated [n,n+10,n+20]. Needs to be bigger #than the number of samples you have (n>ns) and this will be a strong #determination as to how long your program will run
+pts_l = [200,220,240]
+# call particular model to run, the model choosen here is split.w.migration
+func = dadi.Demographics2D.split_mig
+#    params = (nu1,nu2,T,m)
+#    ns = (n1,n2)
+#
+#    Split into two populations of specifed size, with migration.
+#    nu1: Size of population 1 after split.
+#    nu2: Size of population 2 after split.
+#    T: Time in the past of split (in units of 2*Na generations) 
+#    m: Migration rate between populations (2*Na*m)
+#    n1,n2: Sample sizes of resulting Spectrum
+#    pts: Number of grid points to use in integration.
+
+# define your initial Params
+params = array([1, 1, 1, 0])
+
+#Set the upper and lower bounds to make sure that the bounderies are #there. Suggested time parameters: lower 0, upper 5, migration #parameters: lower 0, upper 10,size parameters: lower 1e-2, upper 100 
+upper_bound = [20, 20, 20, 0]
+lower_bound = [1e-3, 1e-3, 1e-3, 0]
+
+
+reps = 5
+while reps > 0:
+    func_ex = dadi.Numerics.make_extrap_func(func)
+    p0 = dadi.Misc.perturb_params(params, fold=2, lower_bound=lower_bound,upper_bound=upper_bound)
+    popt = dadi.Inference.optimize_log(p0, data, func_ex,
+    pts_l,lower_bound=lower_bound,upper_bound=upper_bound,
+    verbose= 1)
+
+    model = func_ex(popt, ns, pts_l)
+
+    theta = dadi.Inference.optimal_sfs_scaling(model, data)
+    ll_opt = dadi.Inference.ll_multinom(model, data)
+        
+
+
+    outfile = "Euro.MD.Sp.NoM." + str(reps) + ".pdf" 
+    pylab.figure(figsize = (8,6))
+    dadi.Plotting.plot_2d_comp_multinom(model, data, vmin=0.01, resid_range=1,
+                                        pop_ids =('Euro.Sp.NoM', 'MourningSp.NoM'), show = False)
+    pylab.savefig(outfile, dpi = 300, bbox_inches = "tight")
+        
+    print ('Optimized parameters', repr([theta,ll_opt,popt])) 
+    file = open("Dove.Euro.MD.Sp.NoM.txt", "a")
+    file.write("\nReplicate " + str(reps) + " " + repr([theta, ll_opt, popt]))
+    file.close()
+    reps = reps - 1
